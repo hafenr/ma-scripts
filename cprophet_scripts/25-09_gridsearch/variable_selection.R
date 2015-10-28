@@ -29,3 +29,5 @@ fitLASSO <- function(stats, target.var) {
   lasso.cv <- cv.glmnet(X, y)
   coef(lasso.cv)
 }
+
+fitDecisionTree(stats, 'score_apmw')
