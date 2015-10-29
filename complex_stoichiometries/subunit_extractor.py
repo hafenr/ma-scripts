@@ -7,9 +7,12 @@ of PDB files that were downloaded from RCSB PDB.
 
 Use the script like this:
 
-    $ python subunit_extractor path/to/download/dir -o all_chains.tsv
+    $ python subunit_extractor path/to/download/dir \
+            -o . \
+            --corum path/to/corum/file.tsv
 
 """
+
 import os.path as p
 import pandas as pd
 from collections import defaultdict
@@ -120,7 +123,7 @@ class BiolUnit:
                 'biol_unit_nr': self.nr,
                 'letter': ch.letter,
                 'trans_nr': ch.trans_nr,
-                'protein': ch.protein,
+                'protein_id': ch.protein,
                 'seq_start': ch.seq_start,
                 'seq_end': ch.seq_end,
                 'complex_stoichiometry': self.stoich_string
@@ -223,7 +226,22 @@ def get_dbrefs(text):
     return info
 
 
-def main(input_dir, output_file):
+def get_all_chains_from_files_in_dir(input_dir):
+    """Load all pdb files (potentially zipped) from directory a directory
+    and extract the biological units.
+
+    Parameters
+    ----------
+    input_dir : string
+        The path to the directory holding the downloaded pdb files.
+
+    Returns
+    -------
+    pd.DataFrame
+        A dataframe where each row corresponds to a chain of some biological
+        unit.
+
+    """
     data_dir = input_dir
     pdb_files = [p.join(data_dir, f) for f in os.listdir(data_dir)]
     complete_biounits = []
@@ -244,14 +262,100 @@ def main(input_dir, output_file):
     all_chains_df = pd.concat(
         [bunit.as_dataframe() for bunit in complete_biounits])
 
-    if not output_file.endswith('.tsv'):
-        output_file += '.tsv'
-    all_chains_df.to_csv(output_file, index=False, sep='\t')
-
-    logger.info('saved all chains to %s' % output_file)
+    n_pdb_ids = len(all_chains_df.pdb_id.drop_duplicates())
     logger.info(
-        'found a total of %d complete biological units belonging to %d pdb entries'
-        % (len(complete_biounits), len(all_chains_df.pdb_id.drop_duplicates())))
+        'found a total of %d complete biological units belonging '
+        'to %d pdb entries'
+        % (len(complete_biounits), n_pdb_ids))
+
+    return all_chains_df
+
+
+def merge_with_corum_complexes(chains_df, corum_complexes):
+    """Merge a df of chains extracted from PDB files with a list
+    of corum complexes.
+
+    Parameters
+    ----------
+    chains_df : pd.DataFrame
+        A dataframe where each row is a chain belonging to some PDB
+        biological unit. The rows must have the columns:
+        - pdb_id                 # the pdb entry id
+        - pdb_biol_unit          # a number indicating the biological unit
+        - protein_id             # a uniprot identifier
+    corum_complexes : pd.DataFrame
+        A dataframe of CORUM complex <-> Uniprot ID associations.
+        The DF should have at least the following columns:
+        - complex_id             # CORUM identifier
+        - complex_name           # some string describing the complex
+        - protein_id             # uniprot identifier
+        - complex_stoichiometry  # a string such as A2B2
+
+    Returns
+    -------
+    pd.DataFrame
+
+    """
+    # Add a new column containing the unique protein ids as a frozen set
+    # to both the corum complexes and the pdb biological units.
+    # Since frozensets are hashable, we can later use this column
+    # to merge both dataframes.
+    def add_unique_proteins(df):
+        df['unique_proteins'] = [frozenset(df.protein_id)] * len(df)
+        return df
+    corum_complexes_with_unique = \
+        corum_complexes.groupby('complex_id').apply(add_unique_proteins)
+    # Drop duplicates so that rows are now complexes instead of complex-protein
+    # associations.
+    corum_complexes_with_unique = \
+        corum_complexes_with_unique[['complex_id', 'complex_name', 'unique_proteins']].\
+        drop_duplicates()
+
+    def add_stoichs(df):
+        df['unique_proteins'] = [frozenset(df.protein_id)] * len(df)
+        # Sort the proteins first so that the two protein lists A,B and B,A
+        # both will be added as 'A,B', 'A,'B'
+        proten_list = sorted(df.protein_id)
+        df['protein_stoichiometry'] = [','.join(proten_list)] * len(df)
+        return df
+    pdb_chains_with_unique = chains_df.groupby(['pdb_id', 'biol_unit_nr']).apply(add_stoichs)
+    # Identical units of a complex are thrown out at this point!
+    pdb_complexes_with_unique = \
+        pdb_chains_with_unique[['pdb_id', 'protein_stoichiometry', 'complex_stoichiometry', 'unique_proteins']].\
+        drop_duplicates()
+
+
+    complexes_with_stoich = pd.merge(corum_complexes_with_unique, pdb_complexes_with_unique)
+    logger.info(
+        'was able to find one or more stoichiometries for %d corum complexes'
+        % len(complexes_with_stoich.complex_id.drop_duplicates()))
+    logger.info(
+        'average number of stoichs per complex: %f'
+        % complexes_with_stoich.groupby('complex_id').\
+                                complex_id.count().mean())
+
+    return complexes_with_stoich.drop('unique_proteins', axis=1)
+
+
+def main(input_dir, output_dir, corum_complexes_file):
+    logger.info('start program')
+    chains_df = get_all_chains_from_files_in_dir(input_dir)
+
+    chains_output_file = 'pdb_chains.tsv'
+    chains_df.to_csv(chains_output_file, index=False, sep='\t')
+    logger.info('saved all chains to %s' % chains_output_file)
+
+    if corum_complexes_file:
+        logger.info('merging with corum')
+        corum_complexes = pd.read_csv(corum_complexes_file, sep='\t')
+        merged_complexes = merge_with_corum_complexes(
+            chains_df, corum_complexes)
+        corum_output_file = 'corum_complexes_with_stoichs.tsv'
+
+        merged_complexes.to_csv(corum_output_file, sep='\t', index=False)
+        logger.info('saved all corum complexes to %s' % corum_output_file)
+    else:
+        logger.info('no corum file supplied, won\'t merge')
 
 
 if __name__ == "__main__":
@@ -263,7 +367,11 @@ if __name__ == "__main__":
             'RCSB PDB java downloader (possibly zipped)'))
     parser.add_argument(
         '-o', '--out',
-        help='where to store the TSV file holding the individual chains')
+        help=('directory where to store the TSV file holding the individual '
+              'chains  and the file holding the CORUM complexes'))
+    parser.add_argument(
+        '-c', '--corum',
+        help='a file with columns complex_id, protein_id, and complex_name')
     args = parser.parse_args()
 
-    main(args.input_dir, args.out)
+    main(args.input_dir, args.out, args.corum)
