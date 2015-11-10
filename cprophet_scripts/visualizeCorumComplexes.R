@@ -1,6 +1,7 @@
 require('data.table')
 require('ggplot2')
 
+rm(list=ls())
 
 # Read corum identifiers
 corum.protein.assoc <-
@@ -8,14 +9,13 @@ corum.protein.assoc <-
           stringsAsFactors=FALSE, colClasses=c(complex_id='character'))
 
 # Read peptide traces and produce protein trace
-peptide.traces.file <- '~/Dev/MAScripts/data/HEK293_peptide_traces_long.tsv'
-if (!exists('protein.traces')) {
-    peptide.traces <- fread(peptide.traces.file)
-    # Sum peptide traces together to produce the protein traces
-    protein.traces <- setnames(peptide.traces[, sum(peptide_intensity),
-                               by=list(protein_id, sec)],
-                      'V1', 'intensity')
-}
+peptide.traces.file <-
+    '~/Dev/MAScripts/data/4_Fixed_weights_wMS1/Subsetted_OSW_Output/Peptide_Matrices/Long_Lists/4_osw_output_mscore_lt_1percent_no_requant_no_decoy.tsv'
+peptide.traces <- fread(peptide.traces.file)
+# Sum peptide traces together to produce the protein traces
+protein.traces <- setnames(peptide.traces[, sum(peptide_intensity),
+                           by=list(protein_id, sec)],
+                  'V1', 'intensity')
 
 # Add a new column to the corum proteins that tells how many proteins
 # are theoretically in the corum complex.
@@ -71,7 +71,11 @@ for (complex.id in complex.ids.to.plot) {
 dev.off()
 
 # Write the ids and names of the complexes to a TSV file
-complex.ids.and.names <-
-    unique(protein.traces.with.complex[, list(complex_id, complex_name)])
-write.table(complex.ids.and.names, 'corum_complexes_names.tsv',
+complex.overview.table <-
+    unique(protein.traces.with.complex[,
+           list(complex_id, complex_name, n_proteins_in_complex,
+                n_proteins_in_complete_complex)])
+complex.overview.table[['apexes (fully_observed)']] <- ''
+complex.overview.table[['apexes (partially_observed)']] <- ''
+write.table(complex.overview.table, 'corum_complexes_overview.tsv',
             sep='\t', row.names=F)
