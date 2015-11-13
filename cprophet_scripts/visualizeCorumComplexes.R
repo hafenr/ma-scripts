@@ -10,7 +10,7 @@ corum.protein.assoc <-
 
 # Read peptide traces and produce protein trace
 peptide.traces.file <-
-    '~/Dev/MAScripts/data/4_Fixed_weights_wMS1/Subsetted_OSW_Output/Peptide_Matrices/Long_Lists/4_osw_output_mscore_lt_1percent_no_requant_no_decoy.tsv'
+    '~/Dev/MAScripts/data/4_Fixed_weights_wMS1/Subsetted_OSW_Output/Peptide_Matrices/Long_Lists/4_osw_output_mscore_lt_1percent_no_requant_no_decoy_FILTERED.tsv'
 peptide.traces <- fread(peptide.traces.file)
 # Sum peptide traces together to produce the protein traces
 protein.traces <- setnames(peptide.traces[, sum(peptide_intensity),
@@ -43,7 +43,7 @@ protein.traces.with.complex[
 
 complex.ids.to.plot <- unique(protein.traces.with.complex$complex_id)
 
-pdf('corum_complexes.pdf')
+pdf('corum_complexes.pdf', width=7.5, height=6)
 idx <- 1
 for (complex.id in complex.ids.to.plot) {
     cat(paste(sprintf('plotting complex %s', complex.id),
@@ -54,8 +54,9 @@ for (complex.id in complex.ids.to.plot) {
     complex.name <- traces[1, complex_name]
     p <- ggplot(traces) +
          geom_line(aes(x=sec, y=intensity, color=protein_id)) +
-         theme(legend.position='none') +
-         ggtitle(sprintf('%s | %s', complex.id, complex.name))
+         # theme(legend.position='none') +
+         ggtitle(sprintf('%s | %s', complex.id, complex.name)) +
+         scale_x_continuous(breaks=round(seq(0, max(traces$sec), by=10), 1))
     annotation.label <- paste(
         traces[1, n_proteins_in_complex], '/',
         traces[1, n_proteins_in_complete_complex],

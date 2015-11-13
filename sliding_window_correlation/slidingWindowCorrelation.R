@@ -3,7 +3,7 @@ require(ggplot2)
 
 rm(list=ls())
 
-complex.id <- '564-6'
+complex.id <- '192'
 
 produceComplexAnnotatedProteinTraces <- function(filename.corum.complex.assoc,
                                                  filename.peptide.traces.long) {
