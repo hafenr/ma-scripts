@@ -1,6 +1,13 @@
 require(data.table)
 require(ggplot2)
 
+#' Read a TSV file where each row corresponds to an annotated complex. 
+#' The table must have the columns: 'complex_id', 'apexes_fully_observed',
+#' 'apexes_partially_observed'. The numbers within the apex columns have to be
+#' comma-separated and should not be surrounded by whitespace.
+#' 
+#' @param fname The filename of the TSV file.
+#' @return A data.table.
 readManualAnnotationFile <- function(fname) {
     annot <- fread(fname, sep='\t', sep2=',', colClasses=rep('character', 3))
     setnames(annot, c('complex_id', 'apexes_fully_observed',
@@ -8,15 +15,14 @@ readManualAnnotationFile <- function(fname) {
     annot
 }
 
-annotations.1.raw <-
-    readManualAnnotationFile('151109_SEC-SWATH_CORUM_manual_annotation_mhe.tsv')
-annotations.2.raw <- readManualAnnotationFile(
-    'COMPLEXES_4_osw_output_mscore_lt_1percent_no_requant_no_decoy_FILTERED_ANNOTATED.tsv'
-)
-
-# Split a list of apexes like '1,2,3,4' and create a data.frame
-# data.frame(rt=c(1, 2, 3, 4), complex.id=X, apex.type=Y).
-# If no split was possible, NULL is returned.
+#' Split a list of apexes like '1,2,3,4' and create a data.frame
+#' data.frame(rt=c(1, 2, 3, 4), complex.id=X, apex.type=Y).
+#' If no split was possible, NULL is returned.
+#'
+#' @param complex.id A string identifying the complex.
+#' @param sep.apexes A string of comma-separated numbers.
+#' @param apex.type A string identifying the type of apex.
+#' @return Either NULL or a data.frame.
 apexStringToDF <- function(complex.id, sep.apexes, apex.type) {
     rt <- as.numeric(strsplit(sep.apexes, ',')[[1]])
     if (length(rt) > 0) {  # if there was something to split on
@@ -26,9 +32,9 @@ apexStringToDF <- function(complex.id, sep.apexes, apex.type) {
     }
 }
 
-# Given a DF with columns 'complex_id', and another column holding 
-# comma-separated strings of numbers, create a long list style DF
-# where each row corresponds to a number.
+#' Given a DF with columns 'complex_id', and another column holding 
+#' comma-separated strings of numbers, create a long list style DF
+#' where each row corresponds to a number.
 createApexDF <- function(annotations, apex.col.name) {
     dframes.list <- mapply(apexStringToDF, annotations$complex_id,
                            annotations[[apex.col.name]], apex.col.name)
@@ -38,20 +44,11 @@ createApexDF <- function(annotations, apex.col.name) {
     rownames(apex.df) <- NULL
     apex.df
 }
-apex.df.1 <- rbind(createApexDF(annotations.1.raw, 'apexes_fully_observed'),
-                   createApexDF(annotations.1.raw, 'apexes_partially_observed'))
-apex.df.2 <- rbind(createApexDF(annotations.2.raw, 'apexes_fully_observed'),
-                   createApexDF(annotations.2.raw, 'apexes_partially_observed'))
 
-apex.dt.1 <- data.table(apex.df.1, key='complex_id')
-apex.dt.2 <- data.table(apex.df.2, key='complex_id')
-
-complex.ids <- unique(apex.dt.1$complex_id)
-
-# Merge to vectors of numbers in such a way that the output won't
-# contain numbers of the second vector that are within a interval
-# [i - window, i + window] for each number i in the first vector.
-# As an example, mergeRTs(c(1, 5), c(2, 3)) will result in c(1, 3, 5).
+#' Merge to vectors of numbers in such a way that the output won't
+#' contain numbers of the second vector that are within a interval
+#' [i - window, i + window] for each number i in the first vector.
+#' As an example, mergeRTs(c(1, 5), c(2, 3)) will result in c(1, 3, 5).
 mergeRTs <- function(rts1, rts2, window=1) {
     ref.rts.with.spacings <- sapply(rts1, function(rt) {
         c(rt - window, rt, rt + window)
@@ -61,13 +58,10 @@ mergeRTs <- function(rts1, rts2, window=1) {
     merged.rts
 }
 
-stopifnot(mergeRTs(c(1, 5), c(3, 2)) == c(1, 5, 3))
-stopifnot(mergeRTs(integer(0), c(3, 2)) == c(3, 2))
-stopifnot(mergeRTs(c(3, 2), integer(0)) == c(3, 2))
-
-# Merge the RTs for apexes of `apex.type` for two DTs.
-# dt1 is treated as the reference DT.
+#' Merge the RTs for apexes of `apex.type` for two DTs.
+#' dt1 is treated as the reference DT.
 createMergedList <- function(dt1, dt2, apex.type) {
+    complex.ids <- unique(dt1$complex_id)
     do.call(rbind, lapply(complex.ids, function(cid) {
         ref.rts <- dt1[complex_id == cid & apex_type == apex.type, rt]
         other.rts <- dt2[complex_id == cid & apex_type == apex.type, rt]
@@ -79,6 +73,23 @@ createMergedList <- function(dt1, dt2, apex.type) {
         }
     }))
 }
+stopifnot(mergeRTs(c(1, 5), c(3, 2)) == c(1, 5, 3))
+stopifnot(mergeRTs(integer(0), c(3, 2)) == c(3, 2))
+stopifnot(mergeRTs(c(3, 2), integer(0)) == c(3, 2))
+
+annotations.1.raw <-
+    readManualAnnotationFile('151109_SEC-SWATH_CORUM_manual_annotation_mhe.tsv')
+annotations.2.raw <- readManualAnnotationFile(
+    'COMPLEXES_4_osw_output_mscore_lt_1percent_no_requant_no_decoy_FILTERED_ANNOTATED.tsv'
+)
+
+apex.df.1 <- rbind(createApexDF(annotations.1.raw, 'apexes_fully_observed'),
+                   createApexDF(annotations.1.raw, 'apexes_partially_observed'))
+apex.df.2 <- rbind(createApexDF(annotations.2.raw, 'apexes_fully_observed'),
+                   createApexDF(annotations.2.raw, 'apexes_partially_observed'))
+
+apex.dt.1 <- data.table(apex.df.1, key='complex_id')
+apex.dt.2 <- data.table(apex.df.2, key='complex_id')
 
 apex.dt.merged <-
     rbind(createMergedList(apex.dt.1, apex.dt.2, 'apexes_fully_observed'),
