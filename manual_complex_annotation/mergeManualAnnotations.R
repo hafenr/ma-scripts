@@ -1,5 +1,7 @@
 require(devtools)
+# MACode git commit: f80708bd55d2d7724573a4d56599d078ce27e736
 devtools::load_all('~/Dev/MACode')
+
 
 annotations.1.raw <-
     '~/Dev/MAScripts/manual_complex_annotation/151109_SEC-SWATH_CORUM_manual_annotation_mhe.tsv'
