@@ -1,18 +1,5 @@
-source('mergeManualAnnotations.R')
-
-# sec_complexes output form cprophet
-detected.features <-
-    fread('~/Dev/cprophet/run-674/iteration-0000/sec_complexes.tsv')
-# merged dataframe from 'mergeManualAnnotations.R'
-manual.annotations <- apex.dt.merged
-# only look at the manual features were every measured 
-# protein was also part of the peak (doesn't have to be
-# a complete protein group).
-true.features <- manual.annotations[apex_type == 'apexes_fully_observed']
-
-
 assessComplexFeatures <- function(true.features, detected.features,
-                            feature.vicinity.tol=5) {
+                                  feature.vicinity.tol=5) {
     complex.ids <- unique(detected.features$complex_id)
 
     do.call(rbind, lapply(complex.ids, function(cid) {
@@ -70,4 +57,15 @@ assessComplexFeatures <- function(true.features, detected.features,
     }))
 }
 
-assessFeatureRT(true.features, detected.features, feature.vicinity.tol=5)
+
+source('mergeManualAnnotations.R')
+manual.annotations <- apex.dt.merged
+# sec_complexes output form cprophet
+detected.features <-
+    fread('~/Dev/cprophet/run-674/iteration-0000/sec_complexes.tsv')
+# Only look at the manual features were every measured 
+# protein was also part of the peak (doesn't have to be
+# a complete protein group).
+true.features <- manual.annotations[apex_type == 'apexes_fully_observed']
+
+assessComplexFeatures(true.features, detected.features, feature.vicinity.tol=5)
