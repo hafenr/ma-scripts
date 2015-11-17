@@ -1,3 +1,16 @@
+#' Check for each feature in `detected.features` if there is another feature in
+#' `true.features` that is close to it. The endresult is a DF of feature
+#' retention times that are flagged with either 'FP', 'TP', or 'FN'.
+#' 
+#' @param true.features data.table of true, manually annotated features.
+#' The DF must have the columns: 'complex_id', 'rt'.
+#' @param detected.features data.table of detected features.
+#' The DF must have the columns: 'complex_id', 'rt'.
+#' @param feature.vicinity.tol A number that indicates how close an
+#' experimentally determined feature has to be to a manually annotated one, to
+#' still count as a true positive.
+#' @return A data.table with the columns: 'complex_id', 'rt', 'type', where
+#' type is of type character an is either 'FP', 'FN', 'TP'.
 assessComplexFeatures <- function(true.features, detected.features,
                                   feature.vicinity.tol=5) {
     complex.ids <- unique(detected.features$complex_id)
@@ -53,7 +66,7 @@ assessComplexFeatures <- function(true.features, detected.features,
         )
 
         classifed.rts$complex_id <- cid
-        classifed.rts
+        as.data.table(classifed.rts)
     }))
 }
 
