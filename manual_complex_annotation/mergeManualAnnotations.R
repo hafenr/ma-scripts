@@ -50,9 +50,12 @@ createApexDF <- function(annotations, apex.col.name) {
 #' [i - window, i + window] for each number i in the first vector.
 #' As an example, mergeRTs(c(1, 5), c(2, 3)) will result in c(1, 3, 5).
 mergeRTs <- function(rts1, rts2, window=1) {
-    ref.rts.with.spacings <- sapply(rts1, function(rt) {
-        c(rt - window, rt, rt + window)
-    })
+    ref.rts.with.spacings <- c(
+        rts1,
+        sapply(seq(window), function(i) {
+            c(rts1 - i, rts1 + i)
+        })
+    )
     other.rts <- setdiff(rts2, ref.rts.with.spacings)
     merged.rts <- c(rts1, other.rts)
     merged.rts
@@ -73,14 +76,15 @@ createMergedList <- function(dt1, dt2, apex.type) {
         }
     }))
 }
-stopifnot(mergeRTs(c(1, 5), c(3, 2)) == c(1, 5, 3))
-stopifnot(mergeRTs(integer(0), c(3, 2)) == c(3, 2))
-stopifnot(mergeRTs(c(3, 2), integer(0)) == c(3, 2))
+stopifnot(setequal(mergeRTs(c(1, 5), c(3, 2)), c(1, 5, 3)))
+stopifnot(setequal(mergeRTs(c(1, 5), c(3, 2), window=2), c(1, 5)))
+stopifnot(setequal(mergeRTs(integer(0), c(3, 2)), c(3, 2)))
+stopifnot(setequal(mergeRTs(c(3, 2), integer(0)), c(3, 2)))
 
 annotations.1.raw <-
-    readManualAnnotationFile('151109_SEC-SWATH_CORUM_manual_annotation_mhe.tsv')
+    readManualAnnotationFile('~/Dev/MAScripts/manual_complex_annotation/151109_SEC-SWATH_CORUM_manual_annotation_mhe.tsv')
 annotations.2.raw <- readManualAnnotationFile(
-    'COMPLEXES_4_osw_output_mscore_lt_1percent_no_requant_no_decoy_FILTERED_ANNOTATED.tsv'
+'~/Dev/MAScripts/manual_complex_annotation/COMPLEXES_4_osw_output_mscore_lt_1percent_no_requant_no_decoy_FILTERED_ANNOTATED.tsv'
 )
 
 apex.df.1 <- rbind(createApexDF(annotations.1.raw, 'apexes_fully_observed'),
@@ -98,7 +102,7 @@ apex.dt.merged.otherway <-
     rbind(createMergedList(apex.dt.2, apex.dt.1, 'apexes_fully_observed'),
           createMergedList(apex.dt.2, apex.dt.1, 'apexes_partially_observed'))
 
-ggplot(apex.dt.merged) +
-    geom_density(aes(x=rt, fill=apex_type), alpha=0.5)
-ggplot(apex.dt.merged.otherway) +
-    geom_density(aes(x=rt, fill=apex_type), alpha=0.5)
+# ggplot(apex.dt.merged) +
+#     geom_density(aes(x=rt, fill=apex_type), alpha=0.5)
+# ggplot(apex.dt.merged.otherway) +
+#     geom_density(aes(x=rt, fill=apex_type), alpha=0.5)
