@@ -1,108 +1,21 @@
-require(data.table)
-require(ggplot2)
-
-#' Read a TSV file where each row corresponds to an annotated complex. 
-#' The table must have the columns: 'complex_id', 'apexes_fully_observed',
-#' 'apexes_partially_observed'. The numbers within the apex columns have to be
-#' comma-separated and should not be surrounded by whitespace.
-#' 
-#' @param fname The filename of the TSV file.
-#' @return A data.table.
-readManualAnnotationFile <- function(fname) {
-    annot <- fread(fname, sep='\t', sep2=',', colClasses=rep('character', 3))
-    setnames(annot, c('complex_id', 'apexes_fully_observed',
-                      'apexes_partially_observed'))
-    annot
-}
-
-#' Split a list of apexes like '1,2,3,4' and create a data.frame
-#' data.frame(rt=c(1, 2, 3, 4), complex.id=X, apex.type=Y).
-#' If no split was possible, NULL is returned.
-#'
-#' @param complex.id A string identifying the complex.
-#' @param sep.apexes A string of comma-separated numbers.
-#' @param apex.type A string identifying the type of apex.
-#' @return Either NULL or a data.frame.
-apexStringToDF <- function(complex.id, sep.apexes, apex.type) {
-    rt <- as.numeric(strsplit(sep.apexes, ',')[[1]])
-    if (length(rt) > 0) {  # if there was something to split on
-        data.frame(complex_id=complex.id, rt=rt,
-                   apex_type=apex.type,
-                   stringsAsFactors=F)
-    }
-}
-
-#' Given a DF with columns 'complex_id', and another column holding 
-#' comma-separated strings of numbers, create a long list style DF
-#' where each row corresponds to a number.
-createApexDF <- function(annotations, apex.col.name) {
-    dframes.list <- mapply(apexStringToDF, annotations$complex_id,
-                           annotations[[apex.col.name]], apex.col.name)
-    # combine a list of dataframes into one large dataframe.
-    # rbind will ignore entries that are NULL.
-    apex.df <- do.call(rbind, dframes.list)
-    rownames(apex.df) <- NULL
-    apex.df
-}
-
-#' Merge to vectors of numbers in such a way that the output won't
-#' contain numbers of the second vector that are within a interval
-#' [i - window, i + window] for each number i in the first vector.
-#' As an example, mergeRTs(c(1, 5), c(2, 3)) will result in c(1, 3, 5).
-mergeRTs <- function(rts1, rts2, window=1) {
-    ref.rts.with.spacings <- c(
-        rts1,
-        sapply(seq(window), function(i) {
-            c(rts1 - i, rts1 + i)
-        })
-    )
-    other.rts <- setdiff(rts2, ref.rts.with.spacings)
-    merged.rts <- c(rts1, other.rts)
-    merged.rts
-}
-
-#' Merge the RTs for apexes of `apex.type` for two DTs.
-#' dt1 is treated as the reference DT.
-createMergedList <- function(dt1, dt2, apex.type) {
-    complex.ids <- unique(dt1$complex_id)
-    do.call(rbind, lapply(complex.ids, function(cid) {
-        ref.rts <- dt1[complex_id == cid & apex_type == apex.type, rt]
-        other.rts <- dt2[complex_id == cid & apex_type == apex.type, rt]
-        merged <- mergeRTs(ref.rts, other.rts)
-        if (length(merged) > 0) {
-            data.table(complex_id=cid, rt=merged, apex_type=apex.type)
-        } else {
-            NULL
-        }
-    }))
-}
-stopifnot(setequal(mergeRTs(c(1, 5), c(3, 2)), c(1, 5, 3)))
-stopifnot(setequal(mergeRTs(c(1, 5), c(3, 2), window=2), c(1, 5)))
-stopifnot(setequal(mergeRTs(integer(0), c(3, 2)), c(3, 2)))
-stopifnot(setequal(mergeRTs(c(3, 2), integer(0)), c(3, 2)))
+require(devtools)
+devtools::load_all('~/Dev/MACode')
 
 annotations.1.raw <-
-    readManualAnnotationFile('~/Dev/MAScripts/manual_complex_annotation/151109_SEC-SWATH_CORUM_manual_annotation_mhe.tsv')
-annotations.2.raw <- readManualAnnotationFile(
-'~/Dev/MAScripts/manual_complex_annotation/COMPLEXES_4_osw_output_mscore_lt_1percent_no_requant_no_decoy_FILTERED_ANNOTATED.tsv'
-)
+    '~/Dev/MAScripts/manual_complex_annotation/151109_SEC-SWATH_CORUM_manual_annotation_mhe.tsv'
+annotations.2.raw <-
+    '~/Dev/MAScripts/manual_complex_annotation/COMPLEXES_4_osw_output_mscore_lt_1percent_no_requant_no_decoy_FILTERED_ANNOTATED.tsv'
 
-apex.df.1 <- rbind(createApexDF(annotations.1.raw, 'apexes_fully_observed'),
-                   createApexDF(annotations.1.raw, 'apexes_partially_observed'))
-apex.df.2 <- rbind(createApexDF(annotations.2.raw, 'apexes_fully_observed'),
-                   createApexDF(annotations.2.raw, 'apexes_partially_observed'))
+manual.annotations <- mergeManualComplexAnnotations(annotations.1.raw, annotations.2.raw,
+                                   'apexes_fully_observed')
 
-apex.dt.1 <- data.table(apex.df.1, key='complex_id')
-apex.dt.2 <- data.table(apex.df.2, key='complex_id')
+# sec_complexes output form cprophet
+detected.features <-
+    fread('~/Dev/cprophet/run-674/iteration-0000/sec_complexes.tsv')
 
-apex.dt.merged <-
-    rbind(createMergedList(apex.dt.1, apex.dt.2, 'apexes_fully_observed'),
-          createMergedList(apex.dt.1, apex.dt.2, 'apexes_partially_observed'))
-apex.dt.merged.otherway <-
-    rbind(createMergedList(apex.dt.2, apex.dt.1, 'apexes_fully_observed'),
-          createMergedList(apex.dt.2, apex.dt.1, 'apexes_partially_observed'))
+# Only look at the manual features were every measured 
+# protein was also part of the peak (doesn't have to be
+# a complete protein group).
+true.features <- manual.annotations[apex_type == 'apexes_fully_observed']
 
-# ggplot(apex.dt.merged) +
-#     geom_density(aes(x=rt, fill=apex_type), alpha=0.5)
-# ggplot(apex.dt.merged.otherway) +
-#     geom_density(aes(x=rt, fill=apex_type), alpha=0.5)
+assessed.feats <- assessComplexFeatures(true.features, detected.features, feature.vicinity.tol=5)
