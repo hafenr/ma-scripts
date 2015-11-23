@@ -23,12 +23,10 @@ mat <- as.matrix(subset(protein.traces.subs.wide, select=-c(1, 2, 3)))
 
 # Compute the sliding window correlation.
 corr <- slidingWindowCorrelation(mat, window.size=15)
-
 # Convert back to long list.
 corr.long <- data.table(corr=corr, sec=seq(min(protein.traces.subs$sec),
                                            max(protein.traces.subs$sec)),
                         complex_id=complex.id)
-
 max.intensity <- max(protein.traces.subs$intensity)
 p <- ggplot(protein.traces.subs) +
             geom_point(aes(x=sec, y=intensity, color=protein_id)) +
@@ -38,5 +36,3 @@ p <- ggplot(protein.traces.subs) +
             geom_abline(intercept=max.intensity/2, linetype=2)
 
 print(p)
-
-
