@@ -47,9 +47,14 @@ cutoffs <- seq(
     max(detected.features$apex_apmw_fit) + 1,
     length=10
 )
+lower <- min(c(detected.features$left_apmw_fit,
+               detected.features$right_apmw_fit))
+upper <- max(detected.features$left_apmw_fit, detected.features$right_apmw_fit)
+offsets <- union(seq(lower, 0, length=20), seq(0, upper, length=20))
 
-res <- makeROCWithSEC(detected.features, manual.annotations.complete, cutoffs)
-plotROC(res, F)
+
+# res <- makeROCWithSEC(detected.features, manual.annotations.complete, cutoffs)
+# plotROC(res, F)
 
 # p <- p +
 #     scale_x_continuous(limits=c(0, 1)) +
@@ -92,40 +97,48 @@ plotROC(res, F)
 
 
 # Plot CUTOFF vs #TARGETS and CUTOFF vs #DECOYS
-getNDecoys <- function(detected.features, cutoff) {
-    feat.filtered <- detected.features[apex_apmw_fit < cutoff, ]
-    feat.filtered[, is_decoy := grepl('^DECOY', complex_id)]
-    length(unique(feat.filtered[is_decoy == T, complex_id]))
+nDecoys <- function(dt, params) {
+    # feat.filtered <- detected.features[apex_apmw_fit < cutoff, ]
+    dt[, is_decoy := grepl('^DECOY', complex_id)]
+    length(unique(dt[is_decoy == T, complex_id]))
 }
-getNTargets <- function(detected.features, cutoff) {
-    feat.filtered <- detected.features[apex_apmw_fit < cutoff, ]
-    feat.filtered[, is_decoy := grepl('^DECOY', complex_id)]
-    length(unique(feat.filtered[is_decoy == F, complex_id]))
+nTargets <- function(dt, params) {
+    dt[, is_decoy := grepl('^DECOY', complex_id)]
+    length(unique(dt[is_decoy == F, complex_id]))
 }
-n.decoys <- sapply(cutoffs, function(cutoff) getNDecoys(detected.features, cutoff))
-n.targets <- sapply(cutoffs, function(cutoff) getNTargets(detected.features, cutoff))
+n.decoys <- sapply(offsets, function(p) {
+    nDecoys(detected.features[
+        left_apmw_fit >= 0 + p & right_apmw_fit >= 0 + p,
+    ], cutoff)
+})
+n.targets <- sapply(offsets, function(p) {
+    nTargets(detected.features[
+        left_apmw_fit >= 0 + p & right_apmw_fit >= 0 + p,
+    ], p)
+})
+
 decoy.target.data <-
-    rbind(data.frame(count=n.decoys, type='decoy', cutoff=cutoffs),
-          data.frame(count=n.targets, type='target', cutoff=cutoffs),
-          data.frame(count=n.targets - n.decoys, type='target - decoy', cutoff=cutoffs))
+    rbind(data.frame(count=n.decoys, type='decoy', param=offsets),
+          data.frame(count=n.targets, type='target', param=offsets),
+          data.frame(count=n.targets - n.decoys, type='target - decoy',
+                     param=offsets))
 p <- ggplot(decoy.target.data) +
-    geom_line(aes(x=cutoff, y=count, color=type)) +
-    geom_point(aes(x=cutoff, y=count, color=type))
+    geom_line(aes(x=param, y=count, color=type)) +
+    geom_point(aes(x=param, y=count, color=type))
 print(p)
 
-
-offsets <- seq(min(c(detected.features$left_apmw_fit,
-                   detected.features$right_apmw_fit)),
-               max(c(detected.features$left_apmw_fit,
-                   detected.features$right_apmw_fit)),
-               length=100)
 
 assessComplexFeatures(manual.annotations,
                       detected.features,
                       2 * length(theoretically.possible.complexes))
 roc <- makeROC(detected.features, manual.annotations.complete,
-               cutoffs,
-               2 * length(theoretically.possible.complexes))
+               offsets,
+               2 * length(theoretically.possible.complexes),
+               function(feats, p) {
+                   detected.features[
+                       left_apmw_fit >= 0 + p & right_apmw_fit >= 0 + p,
+                   ]
+               })
 plotROC(roc, F)
 
 roc.data <- melt(roc, id.vars='cutoff', variable.name='type')
@@ -237,7 +250,7 @@ in.sample <- sapply(all.complex.ids, function(complex.id) {
 })
 
 # We identify
-# > sum(unique(manual.annotations$complex_id) %in% all.complex.ids[in.sample])
+# sum(unique(manual.annotations$complex_id) %in% all.complex.ids[in.sample])
 # [1] 425
 # of
 # > length(unique(manual.annotations$complex_id))

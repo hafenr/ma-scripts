@@ -22,7 +22,7 @@ protein.traces.subs.wide <-
 mat <- as.matrix(subset(protein.traces.subs.wide, select=-c(1, 2, 3)))
 
 # Compute the sliding window correlation.
-corr <- slidingWindowCorrelation(mat, window.size=15)
+corr <- slidingWindowCorrelation(mat, window.size=15, score='diff')
 # Convert back to long list.
 corr.long <- data.table(corr=corr, sec=seq(min(protein.traces.subs$sec),
                                            max(protein.traces.subs$sec)),
@@ -33,6 +33,8 @@ p <- ggplot(protein.traces.subs) +
             geom_line(aes(x=sec, y=intensity, color=protein_id)) +
             geom_line(aes(x=sec, y=corr * max.intensity/2), color='black',
                       data=corr.long) +
-            geom_abline(intercept=max.intensity/2, linetype=2)
-
+            geom_abline(intercept=max.intensity/2, linetype=3) +
+            geom_abline(intercept=max.intensity/2 * 0.9, linetype=3,
+                        color='red') +
+            ggtitle(paste0('CORUM complex ', complex.id))
 print(p)
