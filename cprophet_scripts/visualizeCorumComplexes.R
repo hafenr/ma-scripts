@@ -64,7 +64,7 @@ for (complex.id in complex.ids.to.plot) {
     )
     max.intensity <- traces[, max(intensity)]
     max.sec <- traces[, max(sec)]
-    p <- p + annotate('text', x=0.85*max.sec, y=0.96*max.intensity,
+    p <- p + annotate('text', x=0.95*max.sec, y=0.96*max.intensity,
                       label=annotation.label, size=12)
     print(p)
     idx <- idx + 1
