@@ -16,7 +16,6 @@ setnames(protein.traces.wide, 'complex_id', 'protein_id')
 write.table(protein.traces.wide, '~/Desktop/protein_traces_wide_CC.tsv',
             sep='\t', row.names=F)
 
-
 ## now run cprophet like this:
 # import cprophet
 #
@@ -30,22 +29,57 @@ write.table(protein.traces.wide, '~/Desktop/protein_traces_wide_CC.tsv',
 
 # Read detected features (these are now complex features)
 complex.features <- fread('~/Desktop/cc_out_default_params/sec_proteins_with_dscore.csv')
-complex.features.fil <- complex.features[d_score > 2, ]
 
+# Convert to the same style of complex feature data.table that is used by the
+# PC workflow. This enables us to use all other functions that operate on
+# complex features.
+detected.features <- convertToPCComplexFeatureFormat(complex.features) 
 
-# Bring CC feature output by OpenMS feature finder output in right format
-# s.t. it can be analyzed by the ROC functions.
-complex.features[, complex_id := gsub('pep_', '', complex.features$transition_group_id)]
-detected.features <-
-    data.table(complex_id=gsub('pep_', '', complex.features$transition_group_id),
-               center_rt=complex.features$RT,
-               left_boundary_rt=complex.features$leftWidth,
-               right_boundary_rt=complex.features$rightWidth,
-               d_score=complex.features$d_score)
-detected.features[, is_decoy := grepl('^DECOY', detected.features$complex_id)]
+# Copy all score columns back into the complex features data.frame
+score.column.names <- colnames(complex.features)[
+    grep('^var_', colnames(complex.features))
+]
+for (col in c(score.column.names, 'd_score')) {
+    detected.features[[col]] <- complex.features[[col]]
+}
+
+detected.features[, is_decoy := grepl('^DECOY', complex_id)]
+
+annot <- annotateComplexFeatures(detected.features, manual.annotations.full)
+# Add column is_true_positive back into dt
+detected.features$is_true_positive <- annot$is_true_positive
+
+plot(density(detected.features$d_score), main='d_score distribution',
+     xlab='d_score', ylab='density')
+lines(density(detected.features[is_true_positive == TRUE, d_score]), col='green')
+lines(density(detected.features[is_decoy == TRUE, d_score]), col='red')
+lines(density(detected.features[is_decoy == FALSE, d_score]), col='blue')
+legend('topright', c('all', 'true positive', 'decoy', 'target'),
+       col=c('black', 'green', 'red', 'blue'),
+       lty=1, bg='#eeeeee')
+
+# detected.features <- rbind(
+#     detected.features,
+#     detected.features[is_true_positive == T],
+#     detected.features[is_true_positive == T],
+#     detected.features[is_true_positive == T],
+#     detected.features[is_true_positive == T]
+# )
+
+require(MASS)
+lda.fit <- lda(is_true_positive ~ var_xcorr_coelution + var_intensity_score +
+                                  var_log_sn_score + var_elution_model_fit_score,
+               data=detected.features)
+# cv.fit <- cvFit(
+#     lda, formula=is_true_positive ~ var_xcorr_coelution + var_intensity_score +
+#     var_log_sn_score + var_elution_model_fit_score,
+#     data=detected.features,
+#     cost=function(true, pred) { mean(true != pred) },
+#     K=10
+# )
+# print(cv.fit)
 
 theoretically.possible.complexes <- unique(protein.traces.long$complex_id)
-
 params <- seq(min(complex.features$d_score), max(complex.features$d_score),
               length=100) 
 roc <- makeROC(
@@ -105,6 +139,7 @@ nTargets <- function(dt) {
     dt[, is_decoy := grepl('^DECOY', complex_id)]
     length(unique(dt[is_decoy == F, complex_id]))
 }
+
 n.decoys <- sapply(params, function(p) {
     nDecoys(detected.features[ d_score > p, ])
 })
@@ -127,21 +162,4 @@ p <- ggplot(decoy.target.data) +
     geom_point(aes(x=param, y=count, color=type))
 print(p)
 
-
-
-complex.ids.true <- unique(as.character(manual.annotations$complex_id)) 
-
-
-printStats <- function(p) {
-    cat('n true pos: ', sum(complex.ids.true %in% detected.features[d_score >
-                            p, complex_id]), '\n')
-    cat('n targets: ',
-        length(unique(detected.features[d_score > p & is_decoy == F,
-                      complex_id])),
-        '\n')
-    cat('n decoys: ',
-        length(unique(detected.features[d_score > p & is_decoy == T,
-                      complex_id])),
-        '\n')
-}
 
